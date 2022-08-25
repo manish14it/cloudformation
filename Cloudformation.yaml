@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  vpc:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: 10.10.0.0/16
+      EnableDnsHostnames: True
+      EnableDnsSupport: True
+      InstanceTenancy: default
+      Tags: 
+        - Key: Name 
+          Value: vpc
+  web:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AssignIpv6AddressOnCreation: Boolean
+      AvailabilityZone:  us-east-1a
+      CidrBlock: 10.10.1.0/24
+      MapPublicIpOnLaunch: True
+      Tags: 
+      - Key: Name 
+        Value: web
+      VpcId: !Ref vpc
+  app1:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AssignIpv6AddressOnCreation: Boolean
+      AvailabilityZone:  us-east-1b
+      CidrBlock: 10.10.2.0/24
+      MapPublicIpOnLaunch: True
+      Tags: 
+        - Key: Name 
+          Value: app1
+      VpcId: !Ref vpc
+  db:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AssignIpv6AddressOnCreation: Boolean
+      AvailabilityZone:  us-east-1c
+      CidrBlock: 10.10.3.0/24
+      MapPublicIpOnLaunch: True
+      Tags: 
+      - Key: Name 
+        Value: db
+      VpcId: !Ref vpc
+  igw:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags: 
+      - Key: Name 
+        Value: igw
+  
+  vpcattachement:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: 
+      InternetGatewayId: !Ref igw
+      VpcId: !Ref vpc
+  ngw:
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      ConnectivityType: public
+      SubnetId: !Ref web
+      Tags: 
+      - Key: Name 
+        Value: ngw
+
+  publicrt:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      Tags: 
+        - Key: Name 
+        Value: publicrt
+    VpcId: !Ref vpc
+
+  privatert:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+     Tags: 
+      - Key: Name 
+        Value: privatert
+    VpcId: !Ref vpc
+
+
+  subnetassociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+    RouteTableId: !Ref publicrt
+    SubnetId: !Ref web
+  
+  RouteNATGateway:
+    DependsOn: NATGateway
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref privatert
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref ngw
