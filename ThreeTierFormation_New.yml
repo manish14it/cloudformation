@@ -1,0 +1,244 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  myvpc:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: 10.10.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags: 
+        - Key: Name
+          Value: myvpc
+#1st subnet-web-public
+  web:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: us-east-1a
+      CidrBlock: 10.10.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: web
+      VpcId: !Ref myvpc
+
+#2nd subnet-app-private
+  app:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: us-east-1b
+      CidrBlock: 10.10.2.0/24
+      MapPublicIpOnLaunch: false
+      Tags: 
+        - Key: Name
+          Value: app
+      VpcId: !Ref myvpc
+
+#3th subnet-db-private
+  db:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: us-east-1c
+      CidrBlock: 10.10.5.0/24
+      MapPublicIpOnLaunch: false
+      Tags: 
+        - Key: Name
+          Value: db
+      VpcId: !Ref myvpc
+
+#igw
+  igw:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags: 
+          - Key: Name
+            Value: igw
+
+  attachigw:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: 
+      InternetGatewayId: !Ref igw
+      VpcId: !Ref myvpc
+
+#nat gateway
+  eip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: myvpc
+      Tags: 
+        - Key: Name
+          Value: eip
+
+  nat:
+    Type: AWS::EC2::NatGateway
+    Properties: 
+      AllocationId: !GetAtt eip.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref web
+      Tags: 
+          - Key: Name
+            Value: nat
+
+#1st route table
+  publicroute:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      Tags: 
+          - Key: Name
+            Value: publicroute
+      VpcId: !Ref myvpc
+
+  igwrouting:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref igw
+      RouteTableId: !Ref publicroute
+
+  publicsubnetassociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref publicroute
+      SubnetId: !Ref web
+
+#2nd route table
+  privateroutewithinternet:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      Tags: 
+          - Key: Name
+            Value: privateroutewithinternet
+      VpcId: !Ref myvpc
+
+  natrouting:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref nat
+      RouteTableId: !Ref privateroutewithinternet
+
+  privatesubnetassociation1:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties: 
+        RouteTableId: !Ref privateroutewithinternet
+        SubnetId: !Ref app
+
+#5th route table
+  privateroutewithoutinternet:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      Tags: 
+          - Key: Name
+            Value: privateroutewithoutinternet
+      VpcId: !Ref myvpc
+
+  Privatesubnetassociation2:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties: 
+        RouteTableId: !Ref privateroutewithoutinternet
+        SubnetId: !Ref db
+
+#security Groups 
+  webSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: webSG
+      GroupName: webSG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp:  0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp:  0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref myvpc
+      Tags: 
+        - Key: Name
+          Value: webSG
+
+  appSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: appSG
+      GroupName: appSG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp:  10.10.1.0/24
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref myvpc
+      Tags: 
+        - Key: Name
+          Value: appSG
+
+  dbSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: dbSG
+      GroupName: dbSG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp:  10.10.2.0/24
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref myvpc
+      Tags: 
+        - Key: Name
+          Value: dbSG
+
+#instances
+  Webinstance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-052efd3df9dad4825
+      InstanceType: t2.micro
+      KeyName: virginia-key
+      SecurityGroupIds: 
+        - !Ref webSG
+      SubnetId: !Ref web
+      Tags: 
+          - Key: Name
+            Value: web
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-052efd3df9dad4825
+      KeyName: virginia-key
+      InstanceType: t2.micro
+      SecurityGroupIds: 
+        - !Ref appSG
+      SubnetId: !Ref app
+      Tags: 
+        - Key: Name
+          Value: app
+
+  DBInstance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-052efd3df9dad4825
+      KeyName: virginia-key
+      InstanceType: t2.micro
+      SecurityGroupIds: 
+        - !Ref dbSG
+      SubnetId: !Ref db
+      Tags: 
+        - Key: Name
+          Value: db
